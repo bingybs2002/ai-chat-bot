@@ -45,6 +45,19 @@ Inventory rules:
 Current inventory (JSON):
 ${JSON.stringify(INVENTORY)}`;
 
+/** The request for Asuka's next reply. Shared by the chat route and the evals, so both run the same call. */
+export function chatRequest(messages: Anthropic.MessageParam[], maxTokens: number): Anthropic.MessageStreamParams {
+  return {
+    model: MODEL,
+    max_tokens: maxTokens,
+    system: SYSTEM_PROMPT,
+    messages,
+    // Low effort keeps replies (and the thinking that counts toward the quota) lean for chat.
+    output_config: { effort: "low" },
+    cache_control: { type: "ephemeral" },
+  };
+}
+
 let client: Anthropic | undefined;
 
 // Created lazily so a missing API key surfaces as a readable chat error, not a crash at import time.
