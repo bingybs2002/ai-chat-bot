@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import { Chat } from "@/components/chat/chat";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
 import { getConversation } from "@/lib/chat";
-import { getCurrentUser } from "@/lib/dal";
 import { tokensRemaining } from "@/lib/quota";
 
 export default function ConversationPage({ params }: PageProps<"/c/[id]">) {
@@ -15,13 +14,13 @@ export default function ConversationPage({ params }: PageProps<"/c/[id]">) {
 
 async function Conversation({ params }: { params: PageProps<"/c/[id]">["params"] }) {
   const { id } = await params;
-  const [user, conversation] = await Promise.all([getCurrentUser(), getConversation(id)]);
+  const conversation = await getConversation(id);
   return (
     <Chat
       key={conversation.id}
       conversationId={conversation.id}
       initialMessages={conversation.messages}
-      initialTokensRemaining={tokensRemaining(user.tokensUsed)}
+      initialTokensRemaining={tokensRemaining(conversation.tokensUsed)}
     />
   );
 }

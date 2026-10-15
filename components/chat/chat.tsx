@@ -1,19 +1,25 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircleIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
-import { logoutToSignup } from "@/app/actions/auth";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatStreamEvent } from "@/app/api/chat/route";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatMessage } from "@/lib/chat";
+import { GREETING } from "@/lib/persona";
 import { QUOTA_EXHAUSTED_MESSAGE, TOKEN_LIMIT } from "@/lib/quota";
 import { cn } from "@/lib/utils";
 
 type UIMessage = ChatMessage & { pending?: boolean };
+
+// Shown at the top of every chat; the model is told it already said this (see SYSTEM_PROMPT).
+const OPENING: UIMessage = { id: "opening", role: "assistant", content: GREETING, error: null };
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -27,7 +33,7 @@ export function Chat({
   initialTokensRemaining: number;
 }) {
   const router = useRouter();
-  const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<UIMessage[]>(() => [OPENING, ...initialMessages]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -52,8 +58,9 @@ export function Chat({
       if (!startedConversation.current) return;
       startedConversation.current = false;
       conversationIdRef.current = undefined;
-      setMessages([]);
+      setMessages([OPENING]);
       setRequestError(null);
+      setTokensLeft(TOKEN_LIMIT);
     },
     [],
   );
@@ -175,14 +182,6 @@ export function Chat({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
-          {messages.length === 0 && (
-            <div className="py-24 text-center">
-              <h1 className="text-2xl font-semibold">How can I help?</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Your conversations are saved and the assistant remembers earlier messages in each chat.
-              </p>
-            </div>
-          )}
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
@@ -195,10 +194,12 @@ export function Chat({
           {exhausted ? (
             <Alert variant="destructive">
               <AlertCircleIcon />
-              <AlertTitle>You&apos;re out of tokens</AlertTitle>
+              <AlertTitle>This chat is out of tokens</AlertTitle>
               <AlertDescription>
                 <p>{QUOTA_EXHAUSTED_MESSAGE}</p>
-                <LogoutAndSignup />
+                <Link href="/" className={buttonVariants({ size: "sm", className: "mt-2" })}>
+                  Start a new chat
+                </Link>
               </AlertDescription>
             </Alert>
           ) : (
@@ -250,6 +251,21 @@ export function Chat({
   );
 }
 
+// Assistant replies are Markdown. Raw HTML in them is not rendered (react-markdown's default).
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+  // Wide tables (e.g. car comparisons) scroll inside the bubble instead of overflowing it.
+  table: ({ children }) => (
+    <div className="overflow-x-auto">
+      <table>{children}</table>
+    </div>
+  ),
+};
+
 function MessageBubble({ message }: { message: UIMessage }) {
   const isUser = message.role === "user";
   return (
@@ -257,11 +273,21 @@ function MessageBubble({ message }: { message: UIMessage }) {
       {(message.content || message.pending) && (
         <div
           className={cn(
-            "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words",
-            isUser ? "bg-primary text-primary-foreground" : "bg-muted",
+            "max-w-[85%] min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words",
+            isUser ? "bg-primary text-primary-foreground whitespace-pre-wrap" : "bg-muted",
           )}
         >
-          {message.content || <span className="animate-pulse text-muted-foreground">Thinking…</span>}
+          {!message.content ? (
+            <span className="animate-pulse text-muted-foreground">Thinking…</span>
+          ) : isUser ? (
+            message.content
+          ) : (
+            <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-3 prose-headings:mb-2 prose-table:my-2 first:prose-p:mt-0 last:prose-p:mb-0">
+              <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {message.content}
+              </Markdown>
+            </div>
+          )}
         </div>
       )}
       {message.error && (
@@ -286,15 +312,5 @@ function TokenMeter({ tokensLeft }: { tokensLeft: number }) {
         {fmt(tokensLeft)} / {fmt(TOKEN_LIMIT)} tokens left
       </span>
     </div>
-  );
-}
-
-function LogoutAndSignup() {
-  return (
-    <form action={logoutToSignup} className="mt-2">
-      <Button type="submit" size="sm">
-        Create a new account
-      </Button>
-    </form>
   );
 }

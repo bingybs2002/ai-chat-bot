@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PlusIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { ClearAllButton } from "@/components/chat/clear-all-button";
 import { ConversationLinks } from "@/components/chat/conversation-links";
 import { buttonVariants } from "@/components/ui/button";
 import { getConversations } from "@/lib/chat";
@@ -22,7 +23,8 @@ export default function ChatLayout({ children }: LayoutProps<"/">) {
             <Conversations />
           </Suspense>
         </nav>
-        <div className="border-t p-3">
+        <div className="space-y-2 border-t p-3">
+          <ClearAllButton className="w-full justify-start" />
           <Suspense fallback={<div className="h-8 animate-pulse rounded-md bg-muted" />}>
             <Account />
           </Suspense>
@@ -36,6 +38,7 @@ export default function ChatLayout({ children }: LayoutProps<"/">) {
               <PlusIcon />
               New
             </Link>
+            <ClearAllButton />
             <LogoutButton />
           </div>
         </header>

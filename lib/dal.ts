@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
-export type CurrentUser = { id: string; name: string; email: string; tokensUsed: number };
+export type CurrentUser = { id: string; name: string; email: string };
 
 /**
  * Returns the signed-in user, or redirects to /login.
@@ -17,7 +17,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser> => {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, email: true, tokensUsed: true },
+    select: { id: true, name: true, email: true },
   });
   if (!user) redirect("/api/session/clear");
 

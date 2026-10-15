@@ -74,9 +74,3 @@ export async function logout() {
   await deleteSession();
   redirect("/login");
 }
-
-/** Signs out and goes straight to sign-up (used when an account has run out of tokens). */
-export async function logoutToSignup() {
-  await deleteSession();
-  redirect("/signup");
-}

@@ -17,8 +17,6 @@ model User {
   email           String         @unique
   name            String
   passwordHash    String
-  // Lifetime token usage (input + output, as reported by the API). See lib/quota.ts.
-  tokensUsed      Int            @default(0)
   // Set while a reply is streaming; only one reply per user at a time.
   generatingSince DateTime?
   conversations   Conversation[]
@@ -27,13 +25,15 @@ model User {
 }
 
 model Conversation {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  messages  Message[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  // Tokens this chat has used against its allowance. See lib/quota.ts.
+  tokensUsed Int       @default(0)
+  messages   Message[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([userId, updatedAt])
 }

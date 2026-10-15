@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import * as z from "zod";
-import { MODEL, QuotaError, SYSTEM_PROMPT, describeError, getAnthropic, totalTokens } from "@/lib/ai";
+import { MODEL, QuotaError, SYSTEM_PROMPT, describeError, getAnthropic, quotaTokens } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { QUOTA_EXHAUSTED_MESSAGE, tokensRemaining } from "@/lib/quota";
 import { getSession } from "@/lib/session";
@@ -39,19 +39,8 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonError(400, parsed.error.issues[0]?.message ?? "Invalid request.");
   const { conversationId, message } = parsed.data;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, tokensUsed: true },
-  });
+  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true } });
   if (!user) return jsonError(401, "Your session has expired. Please log in again.", "unauthorized");
-
-  const remaining = tokensRemaining(user.tokensUsed);
-  if (remaining <= 0) return jsonError(403, QUOTA_EXHAUSTED_MESSAGE, "quota_exhausted");
-
-  if (conversationId) {
-    const owned = await prisma.conversation.count({ where: { id: conversationId, userId: user.id } });
-    if (!owned) return jsonError(404, "This conversation no longer exists.");
-  }
 
   // Allow one reply per user at a time, so a second request (e.g. another tab) can't spend
   // the same remaining tokens. The conditional update makes taking the lock atomic; a lock
@@ -59,7 +48,6 @@ export async function POST(req: Request) {
   const locked = await prisma.user.updateMany({
     where: {
       id: user.id,
-      tokensUsed: user.tokensUsed,
       OR: [{ generatingSince: null }, { generatingSince: { lt: new Date(Date.now() - LOCK_TTL_MS) } }],
     },
     data: { generatingSince: new Date() },
@@ -67,16 +55,29 @@ export async function POST(req: Request) {
   if (locked.count === 0) {
     return jsonError(409, "Another reply is still being generated. Wait for it to finish and try again.");
   }
-  // Records what was actually spent and releases the lock. Must run exactly once.
-  const settle = (spent: number) =>
-    prisma.user.update({
-      where: { id: user.id },
-      data: { tokensUsed: { increment: spent }, generatingSince: null },
-    });
+  const unlock = () => prisma.user.update({ where: { id: user.id }, data: { generatingSince: null } });
 
   let conversation: { id: string };
+  let remaining: number;
   let history: Anthropic.MessageParam[];
   try {
+    // Each chat has its own allowance. It's read while holding the lock, so it can't be stale.
+    const existing = conversationId
+      ? await prisma.conversation.findFirst({
+          where: { id: conversationId, userId: user.id },
+          select: { tokensUsed: true },
+        })
+      : { tokensUsed: 0 };
+    if (!existing) {
+      await unlock();
+      return jsonError(404, "This conversation no longer exists.");
+    }
+    remaining = tokensRemaining(existing.tokensUsed);
+    if (remaining <= 0) {
+      await unlock();
+      return jsonError(403, QUOTA_EXHAUSTED_MESSAGE, "quota_exhausted");
+    }
+
     conversation = conversationId
       ? await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
       : await prisma.conversation.create({
@@ -93,9 +94,16 @@ export async function POST(req: Request) {
     });
     history = rows.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
   } catch (error) {
-    await settle(0);
+    await unlock();
     throw error;
   }
+  // Records what this chat actually spent and releases the lock. Must run exactly once.
+  // updateMany, so a chat deleted mid-reply doesn't keep the lock held.
+  const settle = (spent: number) =>
+    prisma.$transaction([
+      prisma.conversation.updateMany({ where: { id: conversation.id }, data: { tokensUsed: { increment: spent } } }),
+      unlock(),
+    ]);
 
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
@@ -144,9 +152,9 @@ export async function POST(req: Request) {
 
         for await (const event of stream) {
           if (event.type === "message_start") {
-            spent = totalTokens(event.message.usage);
+            spent = quotaTokens(event.message.usage);
           } else if (event.type === "message_delta") {
-            spent = totalTokens({ ...event.usage, input_tokens: event.usage.input_tokens ?? 0 });
+            spent = quotaTokens({ ...event.usage, input_tokens: event.usage.input_tokens ?? 0 });
           } else if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
             text += event.delta.text;
             send({ type: "delta", text: event.delta.text });
@@ -154,7 +162,7 @@ export async function POST(req: Request) {
         }
 
         const final = await stream.finalMessage();
-        spent = totalTokens(final.usage);
+        spent = quotaTokens(final.usage);
         if (final.stop_reason === "refusal") {
           text = ""; // a declined reply's partial output isn't a real answer
           error = "The assistant declined to respond to this message. Try rephrasing it.";
@@ -182,9 +190,9 @@ export async function POST(req: Request) {
         console.error("[chat] failed to save reply:", err);
         error ??= "Your reply couldn't be saved. Please try again.";
       }
-      const settled = await settle(spent);
+      await settle(spent);
 
-      send({ type: "done", messageId, error, tokensRemaining: tokensRemaining(settled.tokensUsed) });
+      send({ type: "done", messageId, error, tokensRemaining: Math.max(0, remaining - spent) });
       try {
         controller.close();
       } catch {}

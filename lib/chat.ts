@@ -26,6 +26,7 @@ export async function getConversation(id: string) {
     select: {
       id: true,
       title: true,
+      tokensUsed: true,
       messages: {
         orderBy: { createdAt: "asc" },
         select: { id: true, role: true, content: true, error: true },
