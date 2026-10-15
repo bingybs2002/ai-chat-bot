@@ -1,0 +1,25 @@
+{
+  "metrics": [
+    {
+      "id": "pass",
+      "label": "Pass",
+      "kind": "binary"
+    },
+    {
+      "id": "score",
+      "label": "Judge score",
+      "kind": "judge",
+      "scale": 5
+    },
+    {
+      "id": "checks",
+      "label": "Code checks",
+      "kind": "binary"
+    }
+  ],
+  "harness_paths": [
+    "evals/checks.mjs",
+    "evals/cases.json"
+  ],
+  "harness_sha": "e447c4cf621a3c381f8d4d00f8530fc57353a70f544efb5c912ae66d537ad718"
+}

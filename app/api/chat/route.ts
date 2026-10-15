@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import * as z from "zod";
-import { MODEL, QuotaError, SYSTEM_PROMPT, describeError, getAnthropic, quotaTokens } from "@/lib/ai";
+import { MODEL, QuotaError, SYSTEM_PROMPT, chatRequest, describeError, getAnthropic, quotaTokens } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { QUOTA_EXHAUSTED_MESSAGE, tokensRemaining } from "@/lib/quota";
 import { getSession } from "@/lib/session";
@@ -137,18 +137,9 @@ export async function POST(req: Request) {
           );
         }
 
-        const stream = anthropic.messages.stream(
-          {
-            model: MODEL,
-            max_tokens: Math.min(outputBudget, 64_000),
-            system: SYSTEM_PROMPT,
-            messages: history,
-            // Low effort keeps replies (and the thinking that counts toward the quota) lean for chat.
-            output_config: { effort: "low" },
-            cache_control: { type: "ephemeral" },
-          },
-          { signal: req.signal },
-        );
+        const stream = anthropic.messages.stream(chatRequest(history, Math.min(outputBudget, 64_000)), {
+          signal: req.signal,
+        });
 
         for await (const event of stream) {
           if (event.type === "message_start") {
