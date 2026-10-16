@@ -27,3 +27,10 @@ export type FormState =
       fields?: { name?: string; email?: string };
     }
   | undefined;
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  error: string | null;
+};

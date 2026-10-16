@@ -11,7 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import type { ChatMessage } from "@/lib/chat";
+import type { ChatMessage } from "@/lib/definitions";
 import { GREETING } from "@/lib/persona";
 import { QUOTA_EXHAUSTED_MESSAGE, TOKEN_LIMIT } from "@/lib/quota";
 import { cn } from "@/lib/utils";

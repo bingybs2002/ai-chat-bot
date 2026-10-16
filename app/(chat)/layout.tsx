@@ -5,8 +5,8 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { ClearAllButton } from "@/components/chat/clear-all-button";
 import { ConversationLinks } from "@/components/chat/conversation-links";
 import { buttonVariants } from "@/components/ui/button";
-import { getConversations } from "@/lib/chat";
 import { getCurrentUser } from "@/lib/dal";
+import { listConversations } from "@/lib/services/chat-service";
 
 export default function ChatLayout({ children }: LayoutProps<"/">) {
   return (
@@ -49,7 +49,8 @@ export default function ChatLayout({ children }: LayoutProps<"/">) {
 }
 
 async function Conversations() {
-  const conversations = await getConversations();
+  const user = await getCurrentUser();
+  const conversations = await listConversations(user.id);
   if (conversations.length === 0) {
     return <p className="px-2 py-1 text-sm text-muted-foreground">No conversations yet.</p>;
   }
